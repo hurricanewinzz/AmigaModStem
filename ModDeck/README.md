@@ -29,7 +29,7 @@ Builds as a **Standalone application** and a **VST3 plugin** on **macOS**
 | Beatjump    | Jump back/forward by **1/16, 1/8, 1/4, 1/2, 1 bar**                        |
 | Loop        | Loop the whole module back to the start when it ends (toggleable)          |
 | Loop markers| Set **IN / OUT** points and loop just that **section**                     |
-| FX tab      | **Serial VST3 / AU effect chain** — add several, reorder, bypass each, open each GUI |
+| FX tab      | **Serial VST3 / AU effect chain** — add several, reorder, bypass each, open each GUI, + master **DRY/WET** mix |
 
 ---
 
@@ -117,7 +117,8 @@ For a universal (Intel + Apple Silicon) binary add:
    to loop just that region, **CLR** to clear. **LOOP** loops the whole song.
 7. **FX tab:** **+ ADD EFFECT** to append a VST3/AU to the chain. Effects run
    top-to-bottom over the module. Per row: **BYP** bypasses just that effect,
-   **GUI** opens its editor, **UP/DN** reorder it, **X** removes it.
+   **GUI** opens its editor, **UP/DN** reorder it, **X** removes it. The
+   **DRY/WET** knob blends the untouched module against the whole chain.
 
 > Hosting is enabled via `JUCE_PLUGINHOST_VST3=1` (and `JUCE_PLUGINHOST_AU=1` on
 > macOS) in `CMakeLists.txt`.

@@ -66,6 +66,11 @@ private:
     juce::Label      hint;
     juce::TextButton addButton { "+ ADD EFFECT" };
 
+    juce::Slider mixSlider;
+    juce::Label  mixLabel;
+    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
+    std::unique_ptr<SA> mixAttach;
+
     juce::Viewport  viewport;
     juce::Component chainContainer;
     juce::OwnedArray<FxSlotRow> rows;

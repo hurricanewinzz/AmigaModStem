@@ -1,4 +1,5 @@
 #include "AmigaLookAndFeel.h"
+#include <cmath>
 
 const juce::Colour AmigaLookAndFeel::bg          { 0xff07060d };
 const juce::Colour AmigaLookAndFeel::panel       { 0xff12101f };
@@ -86,6 +87,45 @@ void AmigaLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int wi
     }
 
     juce::ignoreUnused (s);
+}
+
+void AmigaLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                                         float pos, float startAngle, float endAngle, juce::Slider&)
+{
+    auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (4.0f);
+    const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
+    const float cx = bounds.getCentreX();
+    const float cy = bounds.getCentreY();
+    const float angle = startAngle + pos * (endAngle - startAngle);
+    const float thick = radius * 0.28f;
+
+    // track
+    juce::Path track;
+    track.addCentredArc (cx, cy, radius - thick * 0.5f, radius - thick * 0.5f, 0.0f,
+                         startAngle, endAngle, true);
+    g.setColour (grid);
+    g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // value arc (glow + core)
+    juce::Path val;
+    val.addCentredArc (cx, cy, radius - thick * 0.5f, radius - thick * 0.5f, 0.0f,
+                       startAngle, angle, true);
+    g.setColour (neonCyan.withAlpha (0.25f));
+    g.strokePath (val, juce::PathStrokeType (thick + 4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (neonCyan);
+    g.strokePath (val, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // hub + pointer
+    g.setColour (panel);
+    g.fillEllipse (cx - radius * 0.55f, cy - radius * 0.55f, radius * 1.1f, radius * 1.1f);
+    g.setColour (grid);
+    g.drawEllipse (cx - radius * 0.55f, cy - radius * 0.55f, radius * 1.1f, radius * 1.1f, 1.0f);
+
+    juce::Point<float> tip (cx + std::cos (angle - juce::MathConstants<float>::halfPi) * radius * 0.5f,
+                            cy + std::sin (angle - juce::MathConstants<float>::halfPi) * radius * 0.5f);
+    g.setColour (neonGreen);
+    g.drawLine (cx, cy, tip.x, tip.y, 2.4f);
+    g.fillEllipse (cx - 2.5f, cy - 2.5f, 5.0f, 5.0f);
 }
 
 void AmigaLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&,

@@ -31,7 +31,7 @@ and a custom tab to load other VSTs (effects). Must run on macOS and Windows.
 - Beatgrid timeline (anchored bar/beat/16th + playhead), click/drag to seek.
 - Quantize-to-grid (relative to downbeat); beatjump 1/16..1 bar.
 - Loop markers: SET IN/OUT + SECTION loop + CLR; drawn on beatgrid.
-- FX tab: serial VST3/AU effect **chain** — add multiple, reorder (UP/DN), bypass each (BYP), open each GUI; audio routed through the chain in order.
+- FX tab: serial VST3/AU effect **chain** — add multiple, reorder (UP/DN), bypass each (BYP), open each GUI; master **DRY/WET** mix (fxMix param) blends dry module vs chain; audio routed through the chain in order.
 - CRT/neon theme; cross-platform CMake (JUCE_PLUGINHOST_VST3/AU=1) + README for macOS & Windows.
 
 ## Status
@@ -41,6 +41,6 @@ report any compiler errors.
 
 ## Backlog / next
 - Tap-tempo for BPM; nudge buttons for fine grid alignment.
-- Drag-to-reorder FX rows (currently UP/DN buttons); master wet/dry.
+- Drag-to-reorder FX rows (currently UP/DN buttons); per-slot wet/dry.
 - Per-channel VU peak-hold numeric dB; waveform render on beatgrid.
 - Preset save/recall of mixer + grid + FX chain state.

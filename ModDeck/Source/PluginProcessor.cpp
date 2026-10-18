@@ -22,6 +22,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ModDeckProcessor::createLayo
         ParameterID { "tempoFactor", 1 }, "Tempo",
         NormalisableRange<float> (0.25f, 4.0f, 0.0001f, 0.5f), 1.0f));
 
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { "fxMix", 1 }, "FX Mix",
+        NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f));
+
     return layout;
 }
 
@@ -30,6 +34,7 @@ void ModDeckProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     currentSampleRate = sampleRate;
     currentBlockSize  = samplesPerBlock;
     interleaved.assign ((size_t) samplesPerBlock * 2, 0.0f);
+    dryBuffer.setSize (2, samplesPerBlock);
     fxHost.prepare (sampleRate, samplesPerBlock);
 }
 
@@ -121,8 +126,29 @@ void ModDeckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
             R[i] = interleaved[i * 2 + 1];
     }
 
-    // run the hosted VST3/AU effect over the module audio
+    // run the hosted VST3/AU effect chain over the module audio, with a
+    // master wet/dry blend against the untouched module signal.
+    const double mix = (double) (apvts.getRawParameterValue ("fxMix") != nullptr
+                                     ? apvts.getRawParameterValue ("fxMix")->load() : 1.0f);
+
+    if (dryBuffer.getNumSamples() < frames)
+        dryBuffer.setSize (2, frames, false, false, true);
+
+    for (int ch = 0; ch < juce::jmin (numOut, dryBuffer.getNumChannels()); ++ch)
+        dryBuffer.copyFrom (ch, 0, buffer, ch, 0, frames);
+
     fxHost.process (buffer, midi);
+
+    if (mix < 0.999)
+    {
+        for (int ch = 0; ch < juce::jmin (numOut, dryBuffer.getNumChannels()); ++ch)
+        {
+            auto* wet = buffer.getWritePointer (ch);
+            const auto* dry = dryBuffer.getReadPointer (ch);
+            for (int i = 0; i < frames; ++i)
+                wet[i] = (float) (dry[i] * (1.0 - mix) + wet[i] * mix);
+        }
+    }
 
     // section loop: jump back to the IN point once we pass OUT
     if (loopSection.load())

@@ -75,6 +75,7 @@ private:
     double currentSampleRate = 44100.0;
     int    currentBlockSize  = 512;
     std::vector<float> interleaved;
+    juce::AudioBuffer<float> dryBuffer;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ModDeckProcessor)
 };

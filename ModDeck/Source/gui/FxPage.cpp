@@ -142,6 +142,21 @@ FxPage::FxPage (ModDeckProcessor& p) : proc (p)
     setAccent (addButton, LF::neonAmber);
     addButton.onClick = [this] { addEffect(); };
 
+    addAndMakeVisible (mixLabel);
+    mixLabel.setText ("DRY / WET", juce::dontSendNotification);
+    mixLabel.setFont (mono (11.0f, true));
+    mixLabel.setJustificationType (juce::Justification::centred);
+    mixLabel.setColour (juce::Label::textColourId, LF::textDim);
+
+    addAndMakeVisible (mixSlider);
+    mixSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    mixSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 56, 18);
+    mixSlider.setColour (juce::Slider::textBoxTextColourId, LF::neonCyan);
+    mixSlider.setColour (juce::Slider::textBoxOutlineColourId, LF::grid);
+    mixSlider.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + "%"; };
+    mixSlider.valueFromTextFunction = [] (const juce::String& t) { return t.getDoubleValue() / 100.0; };
+    mixAttach = std::make_unique<SA> (proc.apvts, "fxMix", mixSlider);
+
     addAndMakeVisible (viewport);
     viewport.setViewedComponent (&chainContainer, false);
     viewport.setScrollBarsShown (true, false);
@@ -275,9 +290,14 @@ void FxPage::resized()
 {
     auto area = getLocalBounds().reduced (34);
 
-    auto top = area.removeFromTop (34);
-    headline.setBounds (top.removeFromLeft (top.getWidth() - 160));
-    addButton.setBounds (top.removeFromRight (150).reduced (0, 1));
+    auto top = area.removeFromTop (64);
+    auto knob = top.removeFromRight (70);
+    mixLabel.setBounds (knob.removeFromTop (14));
+    mixSlider.setBounds (knob);
+    top.removeFromRight (14);
+    addButton.setBounds (top.removeFromRight (150).withSizeKeepingCentre (150, 30));
+    top.removeFromRight (16);
+    headline.setBounds (top.withSizeKeepingCentre (top.getWidth(), 30));
 
     area.removeFromTop (6);
     hint.setBounds (area.removeFromTop (38));
