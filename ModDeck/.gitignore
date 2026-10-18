@@ -1,0 +1,13 @@
+build/
+Builds/
+cmake-build-*/
+.DS_Store
+*.user
+*.suo
+*.vs/
+JuceLibraryCode/
+_deps/
+.idea/
+*.vst3
+*.component
+*.app
