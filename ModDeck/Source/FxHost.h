@@ -3,14 +3,15 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <atomic>
 #include <memory>
+#include <vector>
 
 /**
-    Minimal single-slot VST3 (and AU on macOS) effect host.
+    Serial VST3 (+ AU on macOS) effect chain host.
 
-    The loaded module audio is rendered first, then passed through the hosted
-    effect in processBlock. Loading / unloading happens on the message thread;
-    the audio thread uses a try-lock so it never blocks and simply skips FX for
-    a block if a swap is in progress.
+    Holds an ordered list of effect slots. The module audio is rendered first,
+    then passed through each non-bypassed slot in order. Add / remove / reorder
+    / bypass happen on the message thread; the audio thread uses a try-lock so
+    it never blocks and simply skips the chain for a block while it is edited.
 */
 class FxHost
 {
@@ -24,28 +25,31 @@ public:
     // audio thread
     void process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi);
 
-    // message thread
-    juce::String loadPlugin (const juce::File& file);   // "" on success, else error
-    void unload();
+    // message thread ------------------------------------------------------
+    juce::String addPlugin (const juce::File& file);   // "" on success, else error
+    void removeSlot (int index);
+    void moveSlot (int from, int to);
+    void setSlotBypass (int index, bool bypassed);
 
-    bool        hasPlugin() const { return loaded.load(); }
-    juce::String getName()  const { return pluginName; }
-    void        setBypassed (bool b) { bypassed.store (b); }
-    bool        isBypassed() const   { return bypassed.load(); }
-
-    juce::AudioPluginInstance* getInstance() { return plugin.get(); }
+    int          getNumSlots() const;
+    juce::String getSlotName (int index) const;
+    bool         isSlotBypassed (int index) const;
+    juce::AudioPluginInstance* getInstance (int index);
 
 private:
+    struct Slot
+    {
+        std::unique_ptr<juce::AudioPluginInstance> plugin;
+        juce::String name;
+        std::atomic<bool> bypassed { false };
+    };
+
     juce::AudioPluginFormatManager formatManager;
-    std::unique_ptr<juce::AudioPluginInstance> plugin;
-    juce::SpinLock audioLock;
+    std::vector<std::unique_ptr<Slot>> slots;
+    mutable juce::SpinLock audioLock;
 
     double sampleRate = 44100.0;
     int    blockSize  = 512;
-
-    std::atomic<bool> loaded   { false };
-    std::atomic<bool> bypassed { false };
-    juce::String pluginName;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxHost)
 };
