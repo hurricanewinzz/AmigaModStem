@@ -134,7 +134,7 @@ void AmigaLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b,
     auto r = b.getLocalBounds().toFloat().reduced (1.0f);
     auto accent = neonGreen;
     if (auto* prop = b.getProperties().getVarPointer ("accent"))
-        accent = juce::Colour ((juce::uint32) (int64_t) *prop);
+        accent = juce::Colour ((juce::uint32) (juce::int64) *prop);
 
     g.setColour (down ? accent.withAlpha (0.35f)
                       : (highlighted ? panel.brighter (0.25f) : panel));

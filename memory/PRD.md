@@ -35,9 +35,10 @@ and a custom tab to load other VSTs (effects). Must run on macOS and Windows.
 - CRT/neon theme; cross-platform CMake (JUCE_PLUGINHOST_VST3/AU=1) + README for macOS & Windows.
 
 ## Status
-Source complete and build-ready but **NOT compiled/verified** — this web
-container cannot build native JUCE/VST apps. User must compile per README and
-report any compiler errors.
+Source complete and **compiled + linked successfully on Linux** (Debian 12
+arm64) → Standalone + VST3 both build with zero errors against JUCE 8.0.4 +
+libopenmpt 0.6.9. macOS/Windows use the same cross-platform CMake (not built
+here — compile per README). GUI not run in the headless container (no display).
 
 ## Backlog / next
 - Tap-tempo for BPM; nudge buttons for fine grid alignment.

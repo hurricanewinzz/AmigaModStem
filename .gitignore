@@ -83,3 +83,4 @@ android-sdk/
 
 # overlay black-box crash/user-report dumps — session data, never history
 **/.emergent/recordings/
+ModDeck/build/_deps/juce-src/.git/objects/pack/pack-983cec0be9e78d44ed36a7fe876642ea7768a58c.pack

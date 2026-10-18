@@ -96,6 +96,25 @@ For a universal (Intel + Apple Silicon) binary add:
 
 ---
 
+## Linux build (verified)
+
+This project has been **compiled and linked successfully on Linux** (Debian 12,
+arm64) producing both the Standalone app and the VST3. Steps:
+```bash
+sudo apt-get install -y cmake pkg-config ninja-build libopenmpt-dev \
+     libasound2-dev libx11-dev libxext-dev libxinerama-dev libxrandr-dev \
+     libxcursor-dev libxcomposite-dev libfreetype6-dev libfontconfig1-dev \
+     libgl1-mesa-dev libglu1-mesa-dev
+cd ModDeck
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+```
+Artefacts:
+- Standalone: `build/ModDeck_artefacts/Release/Standalone/ModDeck`
+- VST3: `build/ModDeck_artefacts/Release/VST3/ModDeck.vst3`
+
+---
+
 ## How to use
 
 1. Open the **Standalone** app (or load the VST3 in your DAW).
