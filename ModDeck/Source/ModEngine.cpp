@@ -148,6 +148,14 @@ bool ModEngine::getChannelMute (int channel) const
     return false;
 }
 
+double ModEngine::getChannelVu (int channel)
+{
+    std::lock_guard<std::mutex> g (lock);
+    if (! mod || channel < 0 || channel >= mod->get_num_channels())
+        return 0.0;
+    return (double) mod->get_current_channel_vu_mono (channel);
+}
+
 void ModEngine::setTempoFactor (double factor)
 {
     std::lock_guard<std::mutex> g (lock);
@@ -167,6 +175,28 @@ double ModEngine::getCurrentTempo()
 {
     std::lock_guard<std::mutex> g (lock);
     return mod ? mod->get_current_tempo() : baseTempo;
+}
+
+int ModEngine::getCurrentSpeed()
+{
+    std::lock_guard<std::mutex> g (lock);
+    return mod ? mod->get_current_speed() : 6;
+}
+
+double ModEngine::getMusicalBpm (int rowsPerBeat)
+{
+    std::lock_guard<std::mutex> g (lock);
+    if (! mod)
+        return baseTempo;
+
+    const double tempo = mod->get_current_tempo();     // classic "BPM" param (e.g. 125)
+    int speed = mod->get_current_speed();              // ticks per row (e.g. 6)
+    if (speed <= 0)      speed = 6;
+    if (rowsPerBeat <= 0) rowsPerBeat = 4;
+
+    // ticks/sec = tempo * 0.4 ; rows/sec = ticks/sec / speed ; beats/sec = rows/sec / rpb
+    const double bpm = tempo * 24.0 / ((double) speed * (double) rowsPerBeat);
+    return bpm > 0.0 ? bpm : baseTempo;
 }
 
 void ModEngine::setRepeat (bool loopForever)

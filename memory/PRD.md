@@ -24,19 +24,23 @@ and a custom tab to load other VSTs (effects). Must run on macOS and Windows.
 
 ## Implemented (2026-06)
 - Load .mod/.xm/.s3m/.it/.med; play/pause/stop; auto-loop to start on end.
-- 4 channel volume sliders + per-channel mute.
-- Tempo factor slider; target-BPM slider + BPM LOCK (auto-matches tempo).
-- Beatgrid timeline (bar/beat/16th lines + playhead), click/drag to seek.
-- Quantize-to-grid; beatjump back/fwd in 1/16,1/8,1/4,1/2,1 bar.
-- CRT/neon theme with scanline overlay.
-- Cross-platform CMake + README build steps for macOS & Windows.
+- 4 channel volume sliders + per-channel mute + glowing VU meters (libopenmpt VU).
+- Tempo factor slider; target-BPM slider + BPM LOCK.
+- Auto-BPM: musical BPM derived from module tempo×24/(speed×rowsPerBeat); auto-locks on load.
+- Grid alignment: ROWS/BEAT + BEATS/BAR selectors + SET DOWNBEAT anchor (match 4/4 or odd).
+- Beatgrid timeline (anchored bar/beat/16th + playhead), click/drag to seek.
+- Quantize-to-grid (relative to downbeat); beatjump 1/16..1 bar.
+- Loop markers: SET IN/OUT + SECTION loop + CLR; drawn on beatgrid.
+- FX tab: real single-slot VST3/AU effect host (load/show GUI/bypass/remove), audio routed through it.
+- CRT/neon theme; cross-platform CMake (JUCE_PLUGINHOST_VST3/AU=1) + README for macOS & Windows.
 
 ## Status
-Source is complete and build-ready but **NOT compiled/verified** — this web
-container cannot build native JUCE/VST apps. User must compile per README.
+Source complete and build-ready but **NOT compiled/verified** — this web
+container cannot build native JUCE/VST apps. User must compile per README and
+report any compiler errors.
 
 ## Backlog / next
-- P1: Real VST3 effect hosting in FX tab (JUCE AudioPluginFormatManager).
-- P2: Auto-detect BPM from module tempo/speed.
-- P2: Per-channel VU meters; waveform/pattern view on the beatgrid.
-- P2: Preset save/recall of mixer + BPM lock state.
+- Tap-tempo for BPM; nudge buttons for fine grid alignment.
+- Multiple FX slots / chain + drag reorder.
+- Per-channel VU peak-hold numeric dB; waveform render on beatgrid.
+- Preset save/recall of mixer + grid + FX state.

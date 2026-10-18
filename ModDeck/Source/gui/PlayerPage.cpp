@@ -1,18 +1,23 @@
 #include "PlayerPage.h"
 #include "AmigaLookAndFeel.h"
+#include <cmath>
+#include <utility>
 
 namespace
 {
-    juce::Font mono (float h, bool bold = false)
-    {
-        return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), h,
-                                              bold ? juce::Font::bold : juce::Font::plain));
-    }
-
-    // jump sizes expressed in beats (quarter note = 1 beat)
+    // jump sizes in beats (quarter note = 1 beat)
     const std::array<std::pair<const char*, double>, 5> kJumps {{
         { "1/16", 0.25 }, { "1/8", 0.5 }, { "1/4", 1.0 }, { "1/2", 2.0 }, { "1 BAR", 4.0 }
     }};
+
+    const std::array<int, 5> kRowsPerBeat { 2, 3, 4, 6, 8 };
+    const std::array<int, 6> kBeatsPerBar { 2, 3, 4, 5, 6, 7 };
+}
+
+juce::Font PlayerPage::mono (float h, bool bold)
+{
+    return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), h,
+                                          bold ? juce::Font::bold : juce::Font::plain));
 }
 
 PlayerPage::PlayerPage (ModDeckProcessor& p)
@@ -55,7 +60,6 @@ PlayerPage::PlayerPage (ModDeckProcessor& p)
     loopToggle.setToggleState (proc.loopEnabled.load(), juce::dontSendNotification);
     loopToggle.onClick = [this] { proc.loopEnabled.store (loopToggle.getToggleState()); };
 
-    // ---- beat tools ------------------------------------------------------
     addAndMakeVisible (quantizeButton);
     setAccent (quantizeButton, LF::neonCyan);
     quantizeButton.onClick = [this] { quantizeToGrid(); };
@@ -77,9 +81,83 @@ PlayerPage::PlayerPage (ModDeckProcessor& p)
     addAndMakeVisible (jumpSizeBox);
     for (int i = 0; i < (int) kJumps.size(); ++i)
         jumpSizeBox.addItem (kJumps[(size_t) i].first, i + 1);
-    jumpSizeBox.setSelectedId (3, juce::dontSendNotification);   // default 1/4
+    jumpSizeBox.setSelectedId (3, juce::dontSendNotification);
 
     addAndMakeVisible (beatGrid);
+
+    // ---- grid alignment tools -------------------------------------------
+    addAndMakeVisible (autoBpmButton);
+    setAccent (autoBpmButton, LF::neonGreen);
+    autoBpmButton.onClick = [this] { autoDetectBpm(); };
+
+    addAndMakeVisible (downbeatButton);
+    setAccent (downbeatButton, LF::neonCyan);
+    downbeatButton.onClick = [this]
+    {
+        proc.gridAnchorSec.store (proc.getEngine().getPositionSeconds());
+        beatGrid.repaint();
+    };
+
+    addAndMakeVisible (rpbCaption);
+    rpbCaption.setText ("ROWS/BEAT", juce::dontSendNotification);
+    rpbCaption.setFont (mono (11.0f, true));
+    rpbCaption.setColour (juce::Label::textColourId, LF::textDim);
+
+    addAndMakeVisible (rpbBox);
+    for (int i = 0; i < (int) kRowsPerBeat.size(); ++i)
+        rpbBox.addItem (juce::String (kRowsPerBeat[(size_t) i]), i + 1);
+    rpbBox.setSelectedId (3, juce::dontSendNotification);   // 4 rows/beat
+    rpbBox.onChange = [this]
+    {
+        proc.rowsPerBeat.store (kRowsPerBeat[(size_t) juce::jlimit (0, 4, rpbBox.getSelectedId() - 1)]);
+        autoDetectBpm();
+    };
+
+    addAndMakeVisible (sigCaption);
+    sigCaption.setText ("BEATS/BAR", juce::dontSendNotification);
+    sigCaption.setFont (mono (11.0f, true));
+    sigCaption.setColour (juce::Label::textColourId, LF::textDim);
+
+    addAndMakeVisible (sigBox);
+    for (int i = 0; i < (int) kBeatsPerBar.size(); ++i)
+        sigBox.addItem (juce::String (kBeatsPerBar[(size_t) i]), i + 1);
+    sigBox.setSelectedId (3, juce::dontSendNotification);   // 4 beats/bar
+    sigBox.onChange = [this]
+    {
+        proc.beatsPerBar.store (kBeatsPerBar[(size_t) juce::jlimit (0, 5, sigBox.getSelectedId() - 1)]);
+        beatGrid.repaint();
+    };
+
+    // ---- loop markers ----------------------------------------------------
+    addAndMakeVisible (loopInButton);
+    setAccent (loopInButton, LF::neonAmber);
+    loopInButton.onClick = [this]
+    {
+        proc.loopInSec.store (proc.getEngine().getPositionSeconds());
+        beatGrid.repaint();
+    };
+
+    addAndMakeVisible (loopOutButton);
+    setAccent (loopOutButton, LF::neonAmber);
+    loopOutButton.onClick = [this]
+    {
+        proc.loopOutSec.store (proc.getEngine().getPositionSeconds());
+        beatGrid.repaint();
+    };
+
+    addAndMakeVisible (loopSectionToggle);
+    loopSectionToggle.onClick = [this] { proc.loopSection.store (loopSectionToggle.getToggleState()); };
+
+    addAndMakeVisible (loopClearButton);
+    setAccent (loopClearButton, LF::neonMagenta);
+    loopClearButton.onClick = [this]
+    {
+        proc.loopInSec.store (-1.0);
+        proc.loopOutSec.store (-1.0);
+        proc.loopSection.store (false);
+        loopSectionToggle.setToggleState (false, juce::dontSendNotification);
+        beatGrid.repaint();
+    };
 
     // ---- bpm / tempo -----------------------------------------------------
     addAndMakeVisible (bpmCaption);
@@ -141,6 +219,9 @@ PlayerPage::PlayerPage (ModDeckProcessor& p)
         s.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         chAttach[(size_t) c] = std::make_unique<SA> (proc.apvts, "ch" + juce::String (c + 1), s);
 
+        chMeters[(size_t) c] = std::make_unique<VuMeter> (stripCols[(size_t) c]);
+        addAndMakeVisible (*chMeters[(size_t) c]);
+
         auto& m = chMutes[(size_t) c];
         addAndMakeVisible (m);
         m.setButtonText ("MUTE");
@@ -155,17 +236,14 @@ PlayerPage::PlayerPage (ModDeckProcessor& p)
     }
 
     refreshTransportButtons();
-    startTimerHz (15);
+    startTimerHz (20);
 }
 
-PlayerPage::~PlayerPage()
-{
-    stopTimer();
-}
+PlayerPage::~PlayerPage() { stopTimer(); }
 
 double PlayerPage::currentBpm() const
 {
-    return juce::jmax (1.0, proc.lockedBpm.load());
+    return juce::jmax (1.0, proc.baseTempo.load() * proc.getEngine().getTempoFactor());
 }
 
 double PlayerPage::sixteenthSeconds() const
@@ -177,8 +255,36 @@ void PlayerPage::applyBpmLock()
 {
     const double base = juce::jmax (1.0, proc.baseTempo.load());
     const double factor = juce::jlimit (0.25, 4.0, proc.lockedBpm.load() / base);
-    if (auto* p = proc.apvts.getParameter ("tempoFactor"))
-        p->setValueNotifyingHost (p->convertTo0to1 ((float) factor));
+    if (auto* pr = proc.apvts.getParameter ("tempoFactor"))
+        pr->setValueNotifyingHost (pr->convertTo0to1 ((float) factor));
+}
+
+void PlayerPage::autoDetectBpm()
+{
+    if (! proc.getEngine().isLoaded())
+        return;
+
+    const int rpb = proc.rowsPerBeat.load();
+    const double musical = proc.getEngine().getMusicalBpm (rpb);
+    if (musical <= 0.0)
+        return;
+
+    proc.baseTempo.store (musical);
+    proc.lockedBpm.store (musical);
+    proc.bpmLocked.store (true);
+
+    if (auto* pr = proc.apvts.getParameter ("tempoFactor"))
+        pr->setValueNotifyingHost (pr->convertTo0to1 (1.0f));   // factor = 1
+
+    syncBpmUi();
+    beatGrid.repaint();
+}
+
+void PlayerPage::syncBpmUi()
+{
+    bpmLockToggle.setToggleState (proc.bpmLocked.load(), juce::dontSendNotification);
+    bpmSlider.setValue (proc.lockedBpm.load(), juce::dontSendNotification);
+    tempoSlider.setEnabled (! proc.bpmLocked.load());
 }
 
 void PlayerPage::beatJump (bool forward)
@@ -198,8 +304,9 @@ void PlayerPage::quantizeToGrid()
     const double step = sixteenthSeconds();
     if (step <= 0.0)
         return;
+    const double anchor = proc.gridAnchorSec.load();
     const double pos = proc.getEngine().getPositionSeconds();
-    const double snapped = std::round (pos / step) * step;
+    const double snapped = anchor + std::round ((pos - anchor) / step) * step;
     proc.getEngine().setPositionSeconds (juce::jmax (0.0, snapped));
     beatGrid.repaint();
 }
@@ -226,9 +333,7 @@ void PlayerPage::chooseFile()
                                     ? file.getFileName().toStdString()
                                     : proc.getEngine().getTitle(),
                                 juce::dontSendNotification);
-            bpmSlider.setValue (proc.lockedBpm.load(), juce::dontSendNotification);
-            if (proc.bpmLocked.load())
-                applyBpmLock();
+            syncBpmUi();
             refreshTransportButtons();
             beatGrid.repaint();
         }
@@ -252,11 +357,10 @@ void PlayerPage::refreshTransportButtons()
 {
     playButton.setButtonText (proc.isPlaying() ? "PAUSE" : "PLAY");
     const bool loaded = proc.getEngine().isLoaded();
-    playButton.setEnabled (loaded);
-    stopButton.setEnabled (loaded);
-    quantizeButton.setEnabled (loaded);
-    jumpBackButton.setEnabled (loaded);
-    jumpFwdButton.setEnabled (loaded);
+    for (auto* b : { &playButton, &stopButton, &quantizeButton, &jumpBackButton,
+                     &jumpFwdButton, &autoBpmButton, &downbeatButton,
+                     &loopInButton, &loopOutButton, &loopClearButton })
+        b->setEnabled (loaded);
 }
 
 juce::String PlayerPage::formatTime (double seconds)
@@ -272,17 +376,16 @@ void PlayerPage::timerCallback()
     const double dur = proc.getEngine().getDurationSeconds();
     timeLabel.setText (formatTime (pos) + " / " + formatTime (dur), juce::dontSendNotification);
 
-    const double base = juce::jmax (1.0, proc.baseTempo.load());
-    const double factor = proc.getEngine().getTempoFactor();
-    const double liveBpm = base * factor;
+    const double liveBpm = currentBpm();
     liveBpmLabel.setText (juce::String (liveBpm, 1) + " BPM", juce::dontSendNotification);
 
     if (! proc.bpmLocked.load())
         bpmSlider.setValue (liveBpm, juce::dontSendNotification);
 
-    if (playButton.getButtonText() == "PLAY" && proc.isPlaying())
-        refreshTransportButtons();
-    if (playButton.getButtonText() == "PAUSE" && ! proc.isPlaying())
+    for (int c = 0; c < ModDeckProcessor::kNumMixChannels; ++c)
+        chMeters[(size_t) c]->setLevel (proc.isPlaying() ? (float) proc.getEngine().getChannelVu (c) : 0.0f);
+
+    if ((playButton.getButtonText() == "PLAY") == proc.isPlaying())
         refreshTransportButtons();
 }
 
@@ -300,12 +403,13 @@ void PlayerPage::paint (juce::Graphics& g)
         {
             g.setColour (LF::textDim);
             g.setFont (mono (11.0f, true));
-            g.drawText (caption, r.getX() + 10, r.getY() + 4, 220, 14, juce::Justification::left);
+            g.drawText (caption, r.getX() + 10, r.getY() + 4, 320, 14, juce::Justification::left);
         }
     };
 
+    drawPanel (toolsPanel, {});
     drawPanel (bpmPanel, {});
-    drawPanel (mixerPanel, "4-CHANNEL MIXER  //  AMIGA PAULA");
+    drawPanel (mixerPanel, "4-CHANNEL MIXER  //  AMIGA PAULA  //  VU");
 }
 
 void PlayerPage::resized()
@@ -328,30 +432,53 @@ void PlayerPage::resized()
     transport.removeFromLeft (8);
     loopToggle.setBounds (transport.removeFromLeft (90).reduced (0, 6));
 
-    // right-aligned beatjump cluster
     jumpFwdButton.setBounds (transport.removeFromRight (56).reduced (0, 3));
     transport.removeFromRight (6);
-    jumpSizeBox.setBounds (transport.removeFromRight (90).reduced (0, 6));
+    jumpSizeBox.setBounds (transport.removeFromRight (86).reduced (0, 6));
     transport.removeFromRight (6);
     jumpBackButton.setBounds (transport.removeFromRight (56).reduced (0, 3));
     transport.removeFromRight (6);
-    jumpLabel.setBounds (transport.removeFromRight (90).reduced (0, 6));
+    jumpLabel.setBounds (transport.removeFromRight (84).reduced (0, 6));
     transport.removeFromRight (14);
-    quantizeButton.setBounds (transport.removeFromRight (110).reduced (0, 3));
+    quantizeButton.setBounds (transport.removeFromRight (104).reduced (0, 3));
 
     area.removeFromTop (10);
 
     // beatgrid
-    beatGrid.setBounds (area.removeFromTop (120));
+    beatGrid.setBounds (area.removeFromTop (116));
 
-    area.removeFromTop (12);
+    area.removeFromTop (10);
+
+    // grid + loop tools
+    toolsPanel = area.removeFromTop (46);
+    {
+        auto t = toolsPanel.reduced (10, 7);
+        autoBpmButton.setBounds (t.removeFromLeft (96));
+        t.removeFromLeft (8);
+        downbeatButton.setBounds (t.removeFromLeft (126));
+        t.removeFromLeft (14);
+        rpbCaption.setBounds (t.removeFromLeft (80).withTrimmedTop (4));
+        rpbBox.setBounds (t.removeFromLeft (56).reduced (0, 2));
+        t.removeFromLeft (12);
+        sigCaption.setBounds (t.removeFromLeft (80).withTrimmedTop (4));
+        sigBox.setBounds (t.removeFromLeft (56).reduced (0, 2));
+
+        // loop cluster on the right
+        loopClearButton.setBounds (t.removeFromRight (56));
+        t.removeFromRight (6);
+        loopSectionToggle.setBounds (t.removeFromRight (90).reduced (0, 1));
+        t.removeFromRight (6);
+        loopOutButton.setBounds (t.removeFromRight (78));
+        t.removeFromRight (6);
+        loopInButton.setBounds (t.removeFromRight (72));
+    }
+
+    area.removeFromTop (10);
 
     // bpm / tempo panel
-    bpmPanel = area.removeFromTop (96);
+    bpmPanel = area.removeFromTop (92);
     {
         auto p = bpmPanel.reduced (12);
-
-        // big live-BPM readout on the right
         liveBpmLabel.setBounds (p.removeFromRight (180));
 
         auto row1 = p.removeFromTop (p.getHeight() / 2);
@@ -364,12 +491,12 @@ void PlayerPage::resized()
         tempoSlider.setBounds (p.reduced (6, 2));
     }
 
-    area.removeFromTop (12);
+    area.removeFromTop (10);
 
     // mixer panel
     mixerPanel = area;
     auto m = mixerPanel.reduced (14);
-    m.removeFromTop (18); // caption space
+    m.removeFromTop (18);
     const int n = ModDeckProcessor::kNumMixChannels;
     const int stripW = m.getWidth() / n;
     for (int c = 0; c < n; ++c)
@@ -377,6 +504,11 @@ void PlayerPage::resized()
         auto strip = m.removeFromLeft (stripW).reduced (10, 0);
         chLabels[(size_t) c].setBounds (strip.removeFromTop (20));
         chMutes[(size_t) c].setBounds (strip.removeFromBottom (26).reduced (8, 2));
-        chSliders[(size_t) c].setBounds (strip.reduced (0, 6));
+        strip.removeFromTop (4);
+
+        auto meter = strip.removeFromRight (16);
+        chMeters[(size_t) c]->setBounds (meter.reduced (0, 4));
+        strip.removeFromRight (8);
+        chSliders[(size_t) c].setBounds (strip.reduced (0, 4));
     }
 }

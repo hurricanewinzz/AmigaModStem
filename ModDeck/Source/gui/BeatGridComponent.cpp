@@ -1,5 +1,6 @@
 #include "BeatGridComponent.h"
 #include "AmigaLookAndFeel.h"
+#include <cmath>
 
 BeatGridComponent::BeatGridComponent (ModDeckProcessor& p) : proc (p)
 {
@@ -23,11 +24,13 @@ void BeatGridComponent::paint (juce::Graphics& g)
 
     const double duration = proc.getEngine().getDurationSeconds();
     const double position = proc.getEngine().getPositionSeconds();
-    const double bpm      = juce::jmax (1.0, proc.lockedBpm.load());
+    const double bpm = juce::jmax (1.0, proc.baseTempo.load() * proc.getEngine().getTempoFactor());
+    const double anchor = proc.gridAnchorSec.load();
+    const int    bpbar  = juce::jmax (1, proc.beatsPerBar.load());
 
     auto inner = r.reduced (2.0f);
-    const float W = inner.getWidth();
-    const float H = inner.getHeight();
+    const float W  = inner.getWidth();
+    const float H  = inner.getHeight();
     const float x0 = inner.getX();
     const float y0 = inner.getY();
 
@@ -39,48 +42,78 @@ void BeatGridComponent::paint (juce::Graphics& g)
         return;
     }
 
-    const double beatDur = 60.0 / bpm;         // seconds per beat (quarter note)
+    const double beatDur  = 60.0 / bpm;
     const double secPerPx = duration / (double) W;
+    auto xForT = [&] (double t) { return x0 + (float) (t / secPerPx); };
 
-    // sixteenth subdivisions (faint)
-    const double sixteenth = beatDur / 4.0;
-    g.setColour (LF::grid.withAlpha (0.5f));
-    for (double t = 0.0; t <= duration; t += sixteenth)
+    // loop-section shading
+    if (proc.loopSection.load())
     {
-        const float x = x0 + (float) (t / secPerPx);
-        g.drawVerticalLine ((int) x, y0 + H * 0.55f, y0 + H);
+        const double in  = proc.loopInSec.load();
+        const double out = proc.loopOutSec.load();
+        if (in >= 0.0 && out > in)
+        {
+            g.setColour (LF::neonAmber.withAlpha (0.14f));
+            g.fillRect (juce::Rectangle<float> (xForT (in), y0, xForT (out) - xForT (in), H));
+        }
     }
 
-    // beat lines
-    int beatIndex = 0;
-    for (double t = 0.0; t <= duration; t += beatDur, ++beatIndex)
+    // sixteenth subdivisions (faint), anchored to the downbeat
+    const double sixteenth = beatDur / 4.0;
+    g.setColour (LF::grid.withAlpha (0.5f));
     {
-        const float x = x0 + (float) (t / secPerPx);
-        const bool bar = (beatIndex % 4) == 0;
-        g.setColour (bar ? LF::neonCyan.withAlpha (0.75f) : LF::grid.brighter (0.4f));
-        g.drawVerticalLine ((int) x, y0, y0 + H);
+        double t = anchor - std::floor ((anchor) / sixteenth) * sixteenth;   // first grid <= 0 region
+        for (; t <= duration; t += sixteenth)
+            if (t >= 0.0)
+                g.drawVerticalLine ((int) xForT (t), y0 + H * 0.55f, y0 + H);
+    }
+
+    // beat / bar lines, counted from the anchor downbeat
+    const long firstBeat = (long) std::floor ((0.0 - anchor) / beatDur);
+    const long lastBeat  = (long) std::ceil  ((duration - anchor) / beatDur);
+    for (long k = firstBeat; k <= lastBeat; ++k)
+    {
+        const double t = anchor + (double) k * beatDur;
+        if (t < 0.0 || t > duration)
+            continue;
+
+        const long mod = ((k % bpbar) + bpbar) % bpbar;   // true modulo
+        const bool bar = (mod == 0);
+        g.setColour (bar ? LF::neonCyan.withAlpha (0.8f) : LF::grid.brighter (0.4f));
+        g.drawVerticalLine ((int) xForT (t), y0, y0 + H);
 
         if (bar)
         {
             g.setColour (LF::neonCyan.withAlpha (0.85f));
             g.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 10.0f, juce::Font::plain)));
-            g.drawText (juce::String (beatIndex / 4 + 1),
-                        (int) x + 2, (int) y0 + 1, 24, 12, juce::Justification::left);
+            g.drawText (juce::String (k / bpbar + 1),
+                        (int) xForT (t) + 2, (int) y0 + 1, 28, 12, juce::Justification::left);
         }
     }
 
     // elapsed shade
-    const float px = x0 + (float) (position / secPerPx);
+    const float px = xForT (position);
     g.setColour (LF::neonGreen.withAlpha (0.10f));
     g.fillRect (juce::Rectangle<float> (x0, y0, px - x0, H));
+
+    // loop markers
+    auto drawMarker = [&] (double t, juce::Colour col, const juce::String& tag)
+    {
+        if (t < 0.0) return;
+        const float x = xForT (t);
+        g.setColour (col);
+        g.fillRect (juce::Rectangle<float> (x - 1.0f, y0, 2.0f, H));
+        g.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 10.0f, juce::Font::bold)));
+        g.drawText (tag, (int) x + 2, (int) (y0 + H - 14), 22, 12, juce::Justification::left);
+    };
+    drawMarker (proc.loopInSec.load(),  LF::neonAmber, "IN");
+    drawMarker (proc.loopOutSec.load(), LF::neonAmber, "OUT");
 
     // playhead
     g.setColour (LF::neonGreen);
     g.fillRect (juce::Rectangle<float> (px - 1.0f, y0, 2.0f, H));
     g.setColour (LF::neonGreen.withAlpha (0.3f));
     g.fillRect (juce::Rectangle<float> (px - 3.0f, y0, 6.0f, H));
-
-    // playhead cap
     juce::Path cap;
     cap.addTriangle (px - 6.0f, y0, px + 6.0f, y0, px, y0 + 8.0f);
     g.setColour (LF::neonGreen);

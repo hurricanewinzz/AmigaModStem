@@ -28,7 +28,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout ModDeckProcessor::createLayo
 void ModDeckProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
+    currentBlockSize  = samplesPerBlock;
     interleaved.assign ((size_t) samplesPerBlock * 2, 0.0f);
+    fxHost.prepare (sampleRate, samplesPerBlock);
+}
+
+void ModDeckProcessor::releaseResources()
+{
+    fxHost.releaseResources();
 }
 
 bool ModDeckProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -40,15 +47,27 @@ bool ModDeckProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 bool ModDeckProcessor::loadModFile (const juce::File& file, juce::String& error)
 {
     std::string err;
-    const bool ok = engine.loadFile (file.getFullPathName().toStdString(), err);
-    if (! ok)
+    if (! engine.loadFile (file.getFullPathName().toStdString(), err))
     {
         error = err;
         return false;
     }
 
-    baseTempo.store (engine.getBaseTempo());
-    lockedBpm.store (engine.getBaseTempo());
+    // Auto BPM detect: derive musical BPM from the module and lock the grid to it.
+    const int rpb = rowsPerBeat.load();
+    const double musical = engine.getMusicalBpm (rpb);
+    baseTempo.store (musical);
+    lockedBpm.store (musical);
+    bpmLocked.store (true);
+
+    if (auto* p = apvts.getParameter ("tempoFactor"))
+        p->setValueNotifyingHost (p->convertTo0to1 (1.0f));
+
+    gridAnchorSec.store (0.0);
+    loopInSec.store (-1.0);
+    loopOutSec.store (-1.0);
+    loopSection.store (false);
+
     engine.setRepeat (loopEnabled.load());
     setPlaying (false);
     engine.setPositionSeconds (0.0);
@@ -61,7 +80,7 @@ void ModDeckProcessor::stopAndRewind()
     engine.setPositionSeconds (0.0);
 }
 
-void ModDeckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void ModDeckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
@@ -69,7 +88,6 @@ void ModDeckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
     if (! engine.isLoaded() || ! playing.load())
         return;
 
-    // push per-channel volumes from the (automatable) parameters
     for (int c = 0; c < kNumMixChannels; ++c)
         if (auto* p = apvts.getRawParameterValue ("ch" + juce::String (c + 1)))
             engine.setChannelVolume (c, (double) p->load());
@@ -87,7 +105,6 @@ void ModDeckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
 
     if (rendered == 0)
     {
-        // reached the end with looping disabled -> stop & rewind
         playing.store (false);
         engine.setPositionSeconds (0.0);
         return;
@@ -99,11 +116,21 @@ void ModDeckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
 
     for (std::size_t i = 0; i < rendered; ++i)
     {
-        const float l = interleaved[i * 2];
-        const float r = interleaved[i * 2 + 1];
-        L[i] = l;
+        L[i] = interleaved[i * 2];
         if (R != nullptr)
-            R[i] = r;
+            R[i] = interleaved[i * 2 + 1];
+    }
+
+    // run the hosted VST3/AU effect over the module audio
+    fxHost.process (buffer, midi);
+
+    // section loop: jump back to the IN point once we pass OUT
+    if (loopSection.load())
+    {
+        const double in  = loopInSec.load();
+        const double out = loopOutSec.load();
+        if (in >= 0.0 && out > in && engine.getPositionSeconds() >= out)
+            engine.setPositionSeconds (in);
     }
 }
 
@@ -114,6 +141,8 @@ void ModDeckProcessor::getStateInformation (juce::MemoryBlock& destData)
         xml->setAttribute ("bpmLocked",   bpmLocked.load());
         xml->setAttribute ("lockedBpm",   lockedBpm.load());
         xml->setAttribute ("loopEnabled", loopEnabled.load());
+        xml->setAttribute ("rowsPerBeat", rowsPerBeat.load());
+        xml->setAttribute ("beatsPerBar", beatsPerBar.load());
         copyXmlToBinary (*xml, destData);
     }
 }
@@ -128,6 +157,8 @@ void ModDeckProcessor::setStateInformation (const void* data, int sizeInBytes)
         bpmLocked.store   (xml->getBoolAttribute   ("bpmLocked",   false));
         lockedBpm.store   (xml->getDoubleAttribute  ("lockedBpm",   125.0));
         loopEnabled.store (xml->getBoolAttribute    ("loopEnabled", true));
+        rowsPerBeat.store (xml->getIntAttribute     ("rowsPerBeat", 4));
+        beatsPerBar.store (xml->getIntAttribute     ("beatsPerBar", 4));
     }
 }
 
@@ -136,7 +167,6 @@ juce::AudioProcessorEditor* ModDeckProcessor::createEditor()
     return new ModDeckEditor (*this);
 }
 
-// This creates new instances of the plugin.
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new ModDeckProcessor();

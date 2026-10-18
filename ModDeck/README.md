@@ -19,14 +19,17 @@ Builds as a **Standalone application** and a **VST3 plugin** on **macOS**
 | Area        | What it does                                                              |
 |-------------|---------------------------------------------------------------------------|
 | Player      | Load `.mod` (also `.xm .s3m .it .med .mptm`), play / pause / stop          |
-| Mixer       | 4 independent **channel volume sliders** + per-channel **MUTE**           |
+| Mixer       | 4 independent **channel volume sliders** + **MUTE** + glowing **VU meters**|
 | Tempo       | `TEMPO x` factor slider (0.25×–4×) driving libopenmpt's tempo factor      |
 | BPM Lock    | Set a **target BPM** and lock it — tempo auto-matches for syncing          |
+| Auto-BPM    | Derives the **musical BPM** from the module's own tempo+speed on load      |
+| Grid align  | **Rows/beat** + **beats/bar** selectors and a **SET DOWNBEAT** anchor so the grid matches 4/4 or odd signatures |
 | Beatgrid    | Timeline of the module with bar/beat/16th grid lines + live playhead       |
-| Quantize    | Snap the playhead to the nearest 1/16 grid line                            |
+| Quantize    | Snap the playhead to the nearest 1/16 grid line (relative to the downbeat) |
 | Beatjump    | Jump back/forward by **1/16, 1/8, 1/4, 1/2, 1 bar**                        |
-| Loop        | When the module ends it loops back to the start (toggleable)               |
-| FX tab      | Reserved slot for future VST3 effect hosting (placeholder for now)         |
+| Loop        | Loop the whole module back to the start when it ends (toggleable)          |
+| Loop markers| Set **IN / OUT** points and loop just that **section**                     |
+| FX tab      | Real single-slot **VST3 / AU effect host** — load, open GUI, bypass, remove|
 
 ---
 
@@ -96,15 +99,27 @@ For a universal (Intel + Apple Silicon) binary add:
 ## How to use
 
 1. Open the **Standalone** app (or load the VST3 in your DAW).
-2. **LOAD .MOD** → pick a module. The title and total time appear; the beatgrid
-   draws the song timeline.
+2. **LOAD .MOD** → pick a module. The title + total time appear, the beatgrid
+   draws the timeline, and **Auto-BPM** locks the grid to the module's musical
+   tempo automatically.
 3. **PLAY** to start. Drag the 4 channel sliders to balance voices; **MUTE**
-   silences a voice.
-4. Set a **TARGET BPM** and hit **BPM LOCK** to keep the tune locked to that
-   tempo for syncing. Unlocked, use the **TEMPO x** slider freely.
+   silences a voice; the **VU meters** show each Amiga voice moving.
+4. **Matching the grid to the music (MOD timing is row/speed based):**
+   - **ROWS/BEAT** — classic Amiga 4/4 tunes use **4**; change it if a tune
+     feels half/double time, then it re-derives the BPM.
+   - **BEATS/BAR** — set your time signature numerator (4 = 4/4, 3 = 3/4, …).
+   - **SET DOWNBEAT** — play to beat 1 of a bar and press it to anchor the grid
+     there, so bar lines and quantize line up with the music.
+   - **AUTO BPM** — re-derive and re-lock the musical BPM at any time.
 5. Use **BEATJUMP `<< / >>`** with the size selector to skip around, and
    **QUANTIZE** to snap to the grid.
-6. **LOOP** keeps the module repeating from the top when it reaches the end.
+6. **Loop section:** **SET IN** / **SET OUT** at the playhead, enable **SECTION**
+   to loop just that region, **CLR** to clear. **LOOP** loops the whole song.
+7. **FX tab:** **LOAD VST3 / AU** an effect, **SHOW GUI** to tweak it, **BYPASS**
+   to A/B, **REMOVE** to unload. The module audio runs through it live.
+
+> Hosting is enabled via `JUCE_PLUGINHOST_VST3=1` (and `JUCE_PLUGINHOST_AU=1` on
+> macOS) in `CMakeLists.txt`.
 
 ---
 
@@ -114,18 +129,21 @@ For a universal (Intel + Apple Silicon) binary add:
 ModDeck/
 ├── CMakeLists.txt
 └── Source/
-    ├── ModEngine.{h,cpp}        # libopenmpt wrapper (playback manipulation)
-    ├── PluginProcessor.{h,cpp}  # JUCE AudioProcessor + parameters
+    ├── ModEngine.{h,cpp}        # libopenmpt wrapper (playback manipulation + VU + musical BPM)
+    ├── FxHost.{h,cpp}           # single-slot VST3/AU effect host
+    ├── PluginProcessor.{h,cpp}  # JUCE AudioProcessor + parameters + section loop
     ├── PluginEditor.{h,cpp}     # window + tabs + CRT overlay
     └── gui/
         ├── AmigaLookAndFeel.{h,cpp}
-        ├── BeatGridComponent.{h,cpp}
+        ├── BeatGridComponent.{h,cpp}   # anchored grid + loop region
+        ├── VuMeter.{h,cpp}
         ├── PlayerPage.{h,cpp}
-        └── FxPage.{h,cpp}
+        └── FxPage.{h,cpp}              # effect host UI + plugin window
 ```
 
-## Notes / roadmap
-- Per-channel volume, mute and tempo use libopenmpt's `interactive` extension,
-  so the original song data is never modified — only playback.
-- The **FX** tab is a reserved placeholder; native VST3 effect hosting
-  (JUCE `AudioPluginFormatManager`) can be added there next.
+## Notes
+- Per-channel volume, mute, tempo and VU use libopenmpt's `interactive`
+  extension + VU API, so the original song data is never modified — only playback.
+- Musical BPM is derived as `tempo × 24 / (speed × rowsPerBeat)` — e.g. the
+  classic 125 tempo / 6 speed / 4 rows-per-beat gives 125 BPM in 4/4.
+- The **FX** tab hosts one external VST3/AU effect in series after the module.

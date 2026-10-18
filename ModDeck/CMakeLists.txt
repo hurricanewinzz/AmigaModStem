@@ -53,10 +53,12 @@ juce_add_plugin(ModDeck
 
 target_sources(ModDeck PRIVATE
     Source/ModEngine.cpp
+    Source/FxHost.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/gui/AmigaLookAndFeel.cpp
     Source/gui/BeatGridComponent.cpp
+    Source/gui/VuMeter.cpp
     Source/gui/PlayerPage.cpp
     Source/gui/FxPage.cpp)
 
@@ -68,6 +70,8 @@ target_compile_definitions(ModDeck PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_PLUGINHOST_VST3=1
+    JUCE_PLUGINHOST_AU=1
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 target_link_libraries(ModDeck PRIVATE

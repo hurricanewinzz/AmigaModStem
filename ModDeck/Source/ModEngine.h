@@ -43,12 +43,17 @@ public:
     double getChannelVolume (int channel) const;
     void   setChannelMute   (int channel, bool muted);
     bool   getChannelMute   (int channel) const;
+    double getChannelVu     (int channel);                  // live 0..1 meter
 
     // -------- tempo --------------------------------------------------------
     void   setTempoFactor (double factor);                  // 0.25 .. 4.0
     double getTempoFactor() const;
     double getBaseTempo()  const { return baseTempo; }      // module BPM at load
-    double getCurrentTempo();                               // live module BPM
+    double getCurrentTempo();                               // live module tempo param
+    int    getCurrentSpeed();                               // ticks per row
+    /** Musical BPM derived from the module's tempo & speed for a chosen
+        rows-per-beat (classic Amiga = 4 rows per beat in 4/4). */
+    double getMusicalBpm (int rowsPerBeat);
 
     // -------- looping ------------------------------------------------------
     void   setRepeat (bool loopForever);
