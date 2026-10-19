@@ -1,0 +1,51 @@
+name: Build AmigaModStem Windows Standalone
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install libopenmpt
+        run: vcpkg install libopenmpt:x64-windows
+
+      - name: Configure CMake
+        run: >-
+          cmake -B "${{ github.workspace }}/ModDeck/build"
+          -S "${{ github.workspace }}/ModDeck"
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build standalone app
+        run: cmake --build "${{ github.workspace }}/ModDeck/build" --config Release --target ModDeck_Standalone
+
+      - name: Package standalone app and runtime DLLs
+        shell: pwsh
+        run: |
+          $standalone = "${{ github.workspace }}/ModDeck/build/ModDeck_artefacts/Release/Standalone"
+          $runtime = "C:/vcpkg/installed/x64-windows/bin"
+          if (-not (Test-Path $standalone)) {
+            throw "Standalone build output was not found at $standalone"
+          }
+          Get-ChildItem -Path $runtime -Filter *.dll -File | Copy-Item -Destination $standalone -Force
+
+      - name: Upload Windows standalone artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AmigaModStem-Windows-x64
+          path: ${{ github.workspace }}/ModDeck/build/ModDeck_artefacts/Release/Standalone/
+          if-no-files-found: error
